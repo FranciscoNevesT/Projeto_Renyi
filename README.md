@@ -1,1 +1,1 @@
-# Projeto_Renyi
+# Projeto Rényi
