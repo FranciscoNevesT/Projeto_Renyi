@@ -116,9 +116,6 @@ def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 1000, ba
         kde_s_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
         kde_s_t.fit(w)
 
-        # Calculate p using kernel density estimation for t dimension
-        p = np.exp(kde_t.score_samples([[bin_start]]))[0]
-
         # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
         t_val = np.exp(kde_s_t.score_samples([[0] * (points.shape[1] - 1)])) * p
 
