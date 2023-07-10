@@ -1,41 +1,41 @@
 import numpy as np
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
-from scipy import integrate
 
-
-def integral_kde(kde, density_function=lambda x: x):
+def integral_kde(kde, lower_bounds, upper_bounds, num_points=10, density_function = lambda x : x):
     """
-    Calculates the integral of a kernel density estimate (KDE) over a given range.
+    Calculate the integral value of a kernel density estimation (KDE) function.
 
     Args:
-        kde (sklearn.neighbors.KernelDensity): The KDE object representing the density estimate.
-        density_function (callable, optional): Function to apply on the density values. Defaults to the identity function.
+        kde (sklearn.neighbors.KernelDensity): The fitted KDE object.
+        lower_bounds (list): List of lower bounds for each dimension.
+        upper_bounds (list): List of upper bounds for each dimension.
+        num_points (int): Number of points to generate along each dimension for evaluating the KDE.
+        density_function (function): Function to apply to the density values before integration.
 
     Returns:
-        float: The calculated integral value.
+        float: The integral value.
+
     """
-    def funct(*args):
-        """
-        Internal function to evaluate the KDE at a given point.
+    #TODO: Implement a more precise way to calc integral
 
-        Args:
-            *args: Variable number of arguments representing the point coordinates.
+    # Generate points on the axis for evaluating the PDF
+    points = [np.linspace(lower, upper, num_points) for lower, upper in zip(lower_bounds, upper_bounds)]
+    meshgrid = np.meshgrid(*points)
+    samples = np.column_stack([axis.ravel() for axis in meshgrid])
 
-        Returns:
-            float: The density value at the given point.
-        """
-        point = list(args)
-        p = np.exp(kde.score_samples([point]))
-        return density_function(p)
+    # Compute the estimated density values
+    log_density = kde.score_samples(samples)
+    density = np.exp(log_density)
+    density = density_function(density)
 
-    dims = kde.n_features_in_
-    bounds = [[-np.inf, np.inf] for _ in range(dims)]
+    # Compute the integral value
+    volume = np.prod([(upper - lower) / num_points for lower, upper in zip(lower_bounds, upper_bounds)])
+    integral_value = np.sum(density) * volume
 
-    integral_value = integrate.nquad(funct, bounds)[0]
     return integral_value
 
-def tau_s(points,bandwidth=0.05):
+def tau_s(points, lower_bounds, upper_bounds,bandwidth=0.05):
     """
     Calculate the tau_s value using kernel density estimation.
 
@@ -57,7 +57,8 @@ def tau_s(points,bandwidth=0.05):
     density_function = lambda x: x ** 2
 
     # Calculate tau_s using integral_kde function
-    return integral_kde(kde_s, density_function=density_function)
+    return integral_kde(kde_s, lower_bounds=lower_bounds, upper_bounds=upper_bounds, num_points=100,
+                        density_function=density_function)
 
 def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 1000, bandwidth = 0.05):
     """
