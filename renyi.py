@@ -92,13 +92,18 @@ def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 1000, ba
         bin_end = t_lower + (t + 1) * d
 
         # Select points within the current bin
-        points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)][:, :-1]
+        points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
 
         # Check if there are points in the bin
         # Todo: make this work when there is 0 elements in the bin
         if len(points_t) == 0:
             # Skip empty bin
             continue
+
+        # Calculate p using kernel density estimation for t dimension
+        p = np.exp(kde_t.score_samples([[np.mean(points_t[:, -1])]]))[0]
+
+        points_t = points_t[:, :-1]
 
         # Randomly sample x1 and x2 from points within the bin
         x1 = points_t[np.random.randint(0, len(points_t), size=(sample_points))]
