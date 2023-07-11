@@ -34,7 +34,7 @@ def integral_kde(kde, density_function=lambda x: x):
     integral_value = integrate.nquad(funct, bounds)[0]
     return integral_value
 
-def tau_s(points, bandwidth=0.5):
+def tau_s(points, bandwidth="scott"):
     """
     Calculates tau_s using kernel density estimation.
 
@@ -54,7 +54,7 @@ def tau_s(points, bandwidth=0.5):
 
     # Calculate tau_s using integral_kde function
     return integral_kde(kde_s, density_function=density_function)
-def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 1000, bandwidth = 0.05):
+def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 10000, bandwidth = "scott"):
     """
     Calculate the tau_s_t value using kernel density estimation.
 
