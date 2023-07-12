@@ -38,13 +38,18 @@ def tau_s(points, bandwidth="scott"):
     """
     Calculates tau_s using kernel density estimation.
 
-    Args:
-        points (numpy.ndarray): Input data points.
-        bandwidth (float, optional): Bandwidth for kernel density estimation. Defaults to 0.5.
+    Parameters:
+    - points: numpy.ndarray, shape (n_samples, n_features)
+        The input data points.
+    - bandwidth: str or float, optional
+        The bandwidth parameter for kernel density estimation. Defaults to "scott".
 
     Returns:
-        float: tau_s value.
+    - tau_s: float
+        The calculated value of tau_s.
+
     """
+
     # Fit kernel density estimation for s dimension
     kde_s = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
     kde_s.fit(points[:, :-1].reshape(-1, points.shape[1] - 1))
@@ -54,22 +59,87 @@ def tau_s(points, bandwidth="scott"):
 
     # Calculate tau_s using integral_kde function
     return integral_kde(kde_s, density_function=density_function)
-def tau_s_t(points, lower_bounds, upper_bounds, bins=10,sample_points = 10000, bandwidth = "scott"):
-    """
-    Calculate the tau_s_t value using kernel density estimation.
 
-    Args:
-        points (numpy.ndarray): Array of points with shape (n, m) where n is the number of points and m is the dimensionality.
-        lower_bounds (list): Array of lower bounds for each dimension.
-        upper_bounds (list): Array of upper bounds for each dimension.
-        bins (int): Number of bins to divide the time range into.
-        sample_points (int): Number of points to sample within each bin.
-        bandwidth (float): Bandwidth parameter for kernel density estimation.
+def calc_bins(points, num_points_bins, lower_bounds, upper_bounds):
+    """
+    Calculates the number of bins for a given set of points.
+
+    Parameters:
+    - points: numpy.ndarray
+        The input data points.
+    - num_points_bins: int
+        The desired number of points per bin.
+    - lower_bounds: list
+        The lower bounds for each dimension.
+    - upper_bounds: list
+        The upper bounds for each dimension.
 
     Returns:
-        float: The tau_s_t value.
+    - num_bins: int
+        The calculated number of bins.
 
     """
+
+    t_lower = lower_bounds[-1]
+    t_upper = upper_bounds[-1]
+
+    if len(points) // num_points_bins <= 1:
+        return 1
+
+    range_bins = [1,len(points)//num_points_bins]
+
+    while range_bins[0] < range_bins[1] - 1:
+        bin_m = (range_bins[1] + range_bins[0]) // 2
+
+        d = (t_upper - t_lower) / bin_m
+
+        bin_correct = True
+        for t in range(bin_m):
+            bin_start = t_lower + t * d
+            bin_end = t_lower + (t + 1) * d
+
+            points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
+
+            if len(points_t) < num_points_bins:
+                range_bins = [range_bins[0],bin_m]
+                bin_correct = False
+                break
+
+        if bin_correct:
+            range_bins = [bin_m,range_bins[1]]
+
+    return range_bins[0]
+
+def tau_s_t(points, lower_bounds, upper_bounds, bins=None,
+            num_points_bins = 10,sample_points = 10000, bandwidth = "scott"):
+
+    """
+    Calculates tau_s_t using kernel density estimation.
+
+    Parameters:
+    - points: numpy.ndarray
+        The input data points.
+    - lower_bounds: list
+        The lower bounds for each dimension.
+    - upper_bounds: list
+        The upper bounds for each dimension.
+    - bins: int, optional
+        The number of bins. If not provided, it will be calculated automatically. Defaults to None.
+    - num_points_bins: int, optional
+        The minimum number of points per bin. Defaults to 10.
+    - sample_points: int, optional
+        The number of points to sample within each bin. Defaults to 10000.
+    - bandwidth: str or float, optional
+        The bandwidth parameter for kernel density estimation. Defaults to "scott".
+
+    Returns:
+    - tau_s_t: float
+        The calculated value of tau_s_t.
+
+    """
+
+    if bins is None:
+        bins = calc_bins(points,num_points_bins,lower_bounds,upper_bounds)
 
     t_lower = lower_bounds[-1]
     t_upper = upper_bounds[-1]

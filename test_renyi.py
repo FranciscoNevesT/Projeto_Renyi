@@ -11,7 +11,7 @@ class MyTestCase(unittest.TestCase):
 
         for _ in range(100):
             num_points = 1000
-            p = np.random.uniform(-1,1)
+            p = np.random.uniform(0,1)
 
             mean = (0,0)
             conv = [[1,p],
@@ -20,30 +20,27 @@ class MyTestCase(unittest.TestCase):
             points = np.random.multivariate_normal(mean,conv,size=num_points)
 
             ts = tau_s(points)
-            tst = tau_s_t(points,lower_bounds=[-3,-3],upper_bounds=[3,3],bins=10)
+            tst = tau_s_t(points,lower_bounds=[-3,-3],upper_bounds=[3,3])
 
             metric_renyi = (tst - ts)/tst
             ref_p = 1 - (1 - p**2)**0.5
 
             dif.append(abs(metric_renyi - ref_p))
 
-
         self.assertLess(np.mean(dif),0.1)
 
     def test_3_dimensions(self):
-        num_points_t = 10
-        num_points = 100
+        cov = np.array([[1, .8],
+                        [.8, 1]])
 
-        t = np.random.uniform(0,100,size=num_points_t)
-
-        cov = np.array([[1, 0],
-                        [0, 1]])
-
+        num_points = 1000
         points = []
-        for i in t:
-            pointsxy = np.random.multivariate_normal(mean=(0, 0), cov=cov, size=(num_points))
 
-            points = points + [list(j) + [i] for j in pointsxy]
+        for _ in range(num_points):
+            t = np.random.uniform(0,100)
+            xy = list(np.random.multivariate_normal(mean=(0, t), cov=cov))
+
+            points.append(xy + [t])
 
         points = np.array(points)
 
@@ -52,7 +49,7 @@ class MyTestCase(unittest.TestCase):
 
         ts = tau_s(points)
 
-        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds,bins=10)
+        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds)
 
         print(ts)
         print(tst)
@@ -66,7 +63,7 @@ class MyTestCase(unittest.TestCase):
 
 
     def test_circule(self):
-        num_points = 100000
+        num_points = 1000
 
         a = np.random.random(size=(num_points)) * 2*math.pi
         r = np.random.random(size=(num_points))
@@ -76,17 +73,12 @@ class MyTestCase(unittest.TestCase):
         points = [[np.sin(a[i]) * r[i],np.cos(a[i]) * r[i]] for i in range(num_points)]
         points = np.array(points)
 
-        plt.plot(points[:,0],points[:,1],"o")
-        plt.show()
-
         lower_bounds = list(np.min(points,axis=0))
         upper_bounds = list(np.max(points,axis=0))
 
         ts = tau_s(points)
 
-        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds,bins=20)
-
-        metric_renyi = (tst - ts) / tst
+        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds)
 
         print(ts)
         print(tst)
