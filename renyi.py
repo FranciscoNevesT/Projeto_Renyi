@@ -110,80 +110,94 @@ def calc_bins(points, num_points_bins, lower_bounds, upper_bounds):
 
     return range_bins[0]
 
-def tau_s_t(points, lower_bounds, upper_bounds, bins=None,
-            num_points_bins = 10,sample_points = 10000, bandwidth = "scott"):
 
-    """
-    Calculates tau_s_t using kernel density estimation.
+def calc_tau_s_t(points_t,kde_t,sample_points,bandwidth):
+    # Check if there are points in the bin
+    # Todo: make this work when there is 0 elements in the bin
+    if len(points_t) == 0:
+        # Skip empty bin
+        return 0
 
-    Parameters:
-    - points: numpy.ndarray
-        The input data points.
-    - lower_bounds: list
-        The lower bounds for each dimension.
-    - upper_bounds: list
-        The upper bounds for each dimension.
-    - bins: int, optional
-        The number of bins. If not provided, it will be calculated automatically. Defaults to None.
-    - num_points_bins: int, optional
-        The minimum number of points per bin. Defaults to 10.
-    - sample_points: int, optional
-        The number of points to sample within each bin. Defaults to 10000.
-    - bandwidth: str or float, optional
-        The bandwidth parameter for kernel density estimation. Defaults to "scott".
+    # Calculate p using kernel density estimation for t dimension
+    p = np.exp(kde_t.score_samples([[np.mean(points_t[:, -1])]]))[0]
+    points_t = points_t[:, :-1]
 
-    Returns:
-    - tau_s_t: float
-        The calculated value of tau_s_t.
+    # Randomly sample x1 and x2 from points within the bin
+    x1 = points_t[np.random.randint(0, len(points_t), size=(sample_points))]
+    x2 = points_t[np.random.randint(0, len(points_t), size=(sample_points))]
 
-    """
+    # Calculate w as the difference between x1 and x2
+    w = x1 - x2
+
+    # Fit kernel density estimation for s_t dimension
+    kde_s_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+    kde_s_t.fit(w)
+
+    # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
+    t_val = np.exp(kde_s_t.score_samples([[0] * points_t.shape[1]])) * p
+
+    return t_val
+
+
+def fragment_space(points, bins=None, num_points_bins=None, lower_bounds=None, upper_bounds=None):
+    if lower_bounds is None:
+        t_lower = np.min(points[:, -1])
+    else:
+        t_lower = lower_bounds[-1]
+
+    if upper_bounds is None:
+        t_upper = np.max(points[:, -1])
+    else:
+        t_upper = upper_bounds[-1]
 
     if bins is None:
-        bins = calc_bins(points,num_points_bins,lower_bounds,upper_bounds)
-
-    t_lower = lower_bounds[-1]
-    t_upper = upper_bounds[-1]
+        bins = calc_bins(points, num_points_bins, [t_lower], [t_upper])
 
     d = (t_upper - t_lower) / bins
+
+    frag = []
+    for t in range(bins):
+        bin_start = t_lower + t * d
+        bin_end = t_lower + ((t + 1) * d)
+
+        # Select points within the current bin
+        points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
+
+        frag.append(points_t)
+
+    return frag
+
+
+def tau_s_t(points, lower_bounds, upper_bounds, bins=None,
+            num_points_bins = 10,sample_points = 10000, bandwidth = "scott",
+            recursive = False):
 
     # Fit kernel density estimation for t dimension
     kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
     kde_t.fit(points[:, -1].reshape(-1, 1))
 
+    if recursive:
+        points_frag = []
+        points_lista = [points]
+
+        while len(points_lista) > 0:
+            p = points_lista.pop(0)
+
+            frags = fragment_space(p, bins=None, num_points_bins=num_points_bins, lower_bounds=None, upper_bounds=None)
+
+            if len(frags) == 1:
+                points_frag.append(frags[0])
+            else:
+                points_lista = points_lista + frags
+
+    else:
+        points_frag = fragment_space(points,bins,num_points_bins,lower_bounds,upper_bounds)
+
     ts = []
-    for t in range(bins):
-        bin_start = t_lower + t * d
-        bin_end = t_lower + (t + 1) * d
+    for points_t in points_frag:
+        t_val = calc_tau_s_t(points_t,kde_t,sample_points,bandwidth)
+        size = np.max(points_t[:,-1]) - np.min(points_t[:,-1])
+        ts.append(t_val * size)
 
-        # Select points within the current bin
-        points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
-
-        # Check if there are points in the bin
-        # Todo: make this work when there is 0 elements in the bin
-        if len(points_t) == 0:
-            # Skip empty bin
-            continue
-
-        # Calculate p using kernel density estimation for t dimension
-        p = np.exp(kde_t.score_samples([[np.mean(points_t[:, -1])]]))[0]
-
-        points_t = points_t[:, :-1]
-
-        # Randomly sample x1 and x2 from points within the bin
-        x1 = points_t[np.random.randint(0, len(points_t), size=(sample_points))]
-        x2 = points_t[np.random.randint(0, len(points_t), size=(sample_points))]
-
-        # Calculate w as the difference between x1 and x2
-        w = x1 - x2
-
-        # Fit kernel density estimation for s_t dimension
-        kde_s_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
-        kde_s_t.fit(w)
-
-        # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
-        t_val = np.exp(kde_s_t.score_samples([[0] * (points.shape[1] - 1)])) * p
-
-        ts.append(t_val)
-
-    return np.sum(ts) * d
+    return np.sum(ts)
 

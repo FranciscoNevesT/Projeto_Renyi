@@ -9,6 +9,8 @@ class MyTestCase(unittest.TestCase):
     def test_gaussian(self):
         dif = []
 
+        ms = []
+        rs = []
         for _ in range(100):
             num_points = 1000
             p = np.random.uniform(0,1)
@@ -27,11 +29,19 @@ class MyTestCase(unittest.TestCase):
 
             dif.append(abs(metric_renyi - ref_p))
 
+            ms.append(p)
+            rs.append(metric_renyi - ref_p)
+
+        #plt.plot(ms,rs,"o")
+        #plt.show()
+
+        print(np.mean(dif))
+
         self.assertLess(np.mean(dif),0.1)
 
     def test_3_dimensions(self):
-        cov = np.array([[1, .8],
-                        [.8, 1]])
+        cov = np.array([[1, 0.8],
+                        [0.8, 1]])
 
         num_points = 1000
         points = []
@@ -49,11 +59,10 @@ class MyTestCase(unittest.TestCase):
 
         ts = tau_s(points)
 
-        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds)
+        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds, num_points_bins=50)
 
         print(ts)
         print(tst)
-
 
         metric_renyi = (tst - ts) / tst
 
