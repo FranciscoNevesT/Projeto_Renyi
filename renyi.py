@@ -3,7 +3,7 @@ from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from scipy import integrate
 
-def integral_kde(kde, density_function=lambda x: x):
+def integral_kde(kde,bounds, density_function=lambda x: x):
     """
     Calculates the integral of a kernel density estimate (KDE) over a given range.
 
@@ -28,13 +28,10 @@ def integral_kde(kde, density_function=lambda x: x):
         p = np.exp(kde.score_samples([point]))
         return density_function(p)
 
-    dims = kde.n_features_in_
-    bounds = [[-np.inf, np.inf] for _ in range(dims)]
-
     integral_value = integrate.nquad(funct, bounds)[0]
     return integral_value
 
-def tau_s(points, bandwidth="scott"):
+def tau_s(points, bounds_type = "ref", bandwidth="scott"):
     """
     Calculates tau_s using kernel density estimation.
 
@@ -49,7 +46,6 @@ def tau_s(points, bandwidth="scott"):
         The calculated value of tau_s.
 
     """
-
     # Fit kernel density estimation for s dimension
     kde_s = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
     kde_s.fit(points[:, :-1].reshape(-1, points.shape[1] - 1))
@@ -57,8 +53,17 @@ def tau_s(points, bandwidth="scott"):
     # Define density function for integration
     density_function = lambda x: x ** 2
 
+    dims = kde_s.n_features_in_
+    if bounds_type == "inf":
+        bounds = [[-np.inf, np.inf] for _ in range(dims)]
+    elif bounds_type == "ref":
+        lower_bounds = list(np.min(points[:, :-1], axis=0))
+        upper_bounds = list(np.max(points[:, :-1], axis=0))
+
+        bounds = [[lower_bounds[i],upper_bounds[i]] for i in range(len(lower_bounds))]
+
     # Calculate tau_s using integral_kde function
-    return integral_kde(kde_s, density_function=density_function)
+    return integral_kde(kde_s, density_function=density_function, bounds = bounds)
 
 def calc_bins(points, num_points_bins, lower_bounds, upper_bounds):
     """
