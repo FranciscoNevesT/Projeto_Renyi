@@ -116,15 +116,13 @@ def calc_bins(points, num_points_bins, lower_bounds, upper_bounds):
     return range_bins[0]
 
 
-def calc_tau_s_t(points_t,kde_t,sample_points,bandwidth):
+def calc_tau_s_t(points_t,sample_points,bandwidth):
     # Check if there are points in the bin
     # Todo: make this work when there is 0 elements in the bin
     if len(points_t) == 0:
         # Skip empty bin
         return 0
 
-    # Calculate p using kernel density estimation for t dimension
-    p = np.exp(kde_t.score_samples([[np.mean(points_t[:, -1])]]))[0]
     points_t = points_t[:, :-1]
 
     # Randomly sample x1 and x2 from points within the bin
@@ -139,7 +137,7 @@ def calc_tau_s_t(points_t,kde_t,sample_points,bandwidth):
     kde_s_t.fit(w)
 
     # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
-    t_val = np.exp(kde_s_t.score_samples([[0] * points_t.shape[1]])) * p
+    t_val = np.exp(kde_s_t.score_samples([[0] * points_t.shape[1]]))
 
     return t_val
 
@@ -168,7 +166,7 @@ def fragment_space(points, bins=None, num_points_bins=None, lower_bounds=None, u
         # Select points within the current bin
         points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
 
-        frag.append(points_t)
+        frag.append([points_t,bin_start,bin_end])
 
     return frag
 
@@ -199,10 +197,32 @@ def tau_s_t(points, lower_bounds, upper_bounds, bins=None,
         points_frag = fragment_space(points,bins,num_points_bins,lower_bounds,upper_bounds)
 
     ts = []
-    for points_t in points_frag:
-        t_val = calc_tau_s_t(points_t,kde_t,sample_points,bandwidth)
-        size = np.max(points_t[:,-1]) - np.min(points_t[:,-1])
-        ts.append(t_val * size)
+
+    inferior_points = [None, np.inf]
+    superior_points = [None, -np.inf]
+    for [points_t,bin_start,bin_end] in points_frag:
+        t_val = calc_tau_s_t(points_t,sample_points,bandwidth)
+
+        ref = integral_kde(kde_t, [[bin_start,bin_end]], density_function=lambda x: x)
+
+        if bin_start < inferior_points[1]:
+            inferior_points[0] = t_val
+            inferior_points[1] = bin_start
+
+        if bin_end > superior_points[1]:
+            superior_points[0] = t_val
+            superior_points[1] = bin_end
+
+        ts.append(t_val * ref)
+
+
+    #Inferior part
+    ref = integral_kde(kde_t, [[-np.inf, inferior_points[1]]], density_function=lambda x: x)
+    ts.append(inferior_points[0]*ref)
+
+    #Superior part
+    ref = integral_kde(kde_t, [[superior_points[1], np.inf]], density_function=lambda x: x)
+    ts.append(superior_points[0]*ref)
 
     return np.sum(ts)
 
