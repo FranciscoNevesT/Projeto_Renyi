@@ -3,6 +3,8 @@ from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from scipy import integrate
 
+from numpy import histogram_bin_edges
+
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
     Calculates the integral of a kernel density estimate (KDE) over a given range.
@@ -31,7 +33,7 @@ def integral_kde(kde,bounds, density_function=lambda x: x):
     integral_value = integrate.nquad(funct, bounds)[0]
     return integral_value
 
-def tau_s(points, bounds_type = "ref", bandwidth="scott"):
+def tau_s(points, bounds_type = "ref", bandwidth="silverman"):
     """
     Calculates tau_s using kernel density estimation.
 
@@ -65,56 +67,6 @@ def tau_s(points, bounds_type = "ref", bandwidth="scott"):
     # Calculate tau_s using integral_kde function
     return integral_kde(kde_s, density_function=density_function, bounds = bounds)
 
-def calc_bins(points, num_points_bins, lower_bounds, upper_bounds):
-    """
-    Calculates the number of bins for a given set of points.
-
-    Parameters:
-    - points: numpy.ndarray
-        The input data points.
-    - num_points_bins: int
-        The desired number of points per bin.
-    - lower_bounds: list
-        The lower bounds for each dimension.
-    - upper_bounds: list
-        The upper bounds for each dimension.
-
-    Returns:
-    - num_bins: int
-        The calculated number of bins.
-
-    """
-
-    t_lower = lower_bounds[-1]
-    t_upper = upper_bounds[-1]
-
-    if len(points) // num_points_bins <= 1:
-        return 1
-
-    range_bins = [1,len(points)//num_points_bins]
-
-    while range_bins[0] < range_bins[1] - 1:
-        bin_m = (range_bins[1] + range_bins[0]) // 2
-
-        d = (t_upper - t_lower) / bin_m
-
-        bin_correct = True
-        for t in range(bin_m):
-            bin_start = t_lower + t * d
-            bin_end = t_lower + (t + 1) * d
-
-            points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
-
-            if len(points_t) < num_points_bins:
-                range_bins = [range_bins[0],bin_m]
-                bin_correct = False
-                break
-
-        if bin_correct:
-            range_bins = [bin_m,range_bins[1]]
-
-    return range_bins[0]
-
 
 def calc_tau_s_t(points_t,sample_points,bandwidth):
     # Check if there are points in the bin
@@ -137,31 +89,18 @@ def calc_tau_s_t(points_t,sample_points,bandwidth):
     kde_s_t.fit(w)
 
     # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
-    t_val = np.exp(kde_s_t.score_samples([[0] * points_t.shape[1]]))
+    t_val = np.exp(kde_s_t.score_samples([[0] * points_t.shape[1]]))[0]
 
     return t_val
 
 
-def fragment_space(points, bins=None, num_points_bins=None, lower_bounds=None, upper_bounds=None):
-    if lower_bounds is None:
-        t_lower = np.min(points[:, -1])
-    else:
-        t_lower = lower_bounds[-1]
-
-    if upper_bounds is None:
-        t_upper = np.max(points[:, -1])
-    else:
-        t_upper = upper_bounds[-1]
-
-    if bins is None:
-        bins = calc_bins(points, num_points_bins, [t_lower], [t_upper])
-
-    d = (t_upper - t_lower) / bins
+def fragment_space(points):
+    bounds = [-np.inf] +  list(histogram_bin_edges(points[:,-1])) + [np.inf]
 
     frag = []
-    for t in range(bins):
-        bin_start = t_lower + t * d
-        bin_end = t_lower + ((t + 1) * d)
+    for i in range(len(bounds) - 1):
+        bin_start = bounds[i]
+        bin_end = bounds[i + 1]
 
         # Select points within the current bin
         points_t = points[(bin_start < points[:, -1]) & (points[:, -1] < bin_end)]
@@ -171,58 +110,22 @@ def fragment_space(points, bins=None, num_points_bins=None, lower_bounds=None, u
     return frag
 
 
-def tau_s_t(points, lower_bounds, upper_bounds, bins=None,
-            num_points_bins = 10,sample_points = 10000, bandwidth = "scott",
-            recursive = False):
+def tau_s_t(points,sample_points = 100, bandwidth = "silverman"):
 
     # Fit kernel density estimation for t dimension
     kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
     kde_t.fit(points[:, -1].reshape(-1, 1))
 
-    if recursive:
-        points_frag = []
-        points_lista = [points]
-
-        while len(points_lista) > 0:
-            p = points_lista.pop(0)
-
-            frags = fragment_space(p, bins=None, num_points_bins=num_points_bins, lower_bounds=None, upper_bounds=None)
-
-            if len(frags) == 1:
-                points_frag.append(frags[0])
-            else:
-                points_lista = points_lista + frags
-
-    else:
-        points_frag = fragment_space(points,bins,num_points_bins,lower_bounds,upper_bounds)
+    points_frag = fragment_space(points)
 
     ts = []
 
-    inferior_points = [None, np.inf]
-    superior_points = [None, -np.inf]
     for [points_t,bin_start,bin_end] in points_frag:
         t_val = calc_tau_s_t(points_t,sample_points,bandwidth)
 
         ref = integral_kde(kde_t, [[bin_start,bin_end]], density_function=lambda x: x)
 
-        if bin_start < inferior_points[1]:
-            inferior_points[0] = t_val
-            inferior_points[1] = bin_start
-
-        if bin_end > superior_points[1]:
-            superior_points[0] = t_val
-            superior_points[1] = bin_end
-
         ts.append(t_val * ref)
-
-
-    #Inferior part
-    ref = integral_kde(kde_t, [[-np.inf, inferior_points[1]]], density_function=lambda x: x)
-    ts.append(inferior_points[0]*ref)
-
-    #Superior part
-    ref = integral_kde(kde_t, [[superior_points[1], np.inf]], density_function=lambda x: x)
-    ts.append(superior_points[0]*ref)
 
     return np.sum(ts)
 

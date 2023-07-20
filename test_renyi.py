@@ -11,31 +11,43 @@ class MyTestCase(unittest.TestCase):
 
         ms = []
         rs = []
+
+        tsts = []
+        tss = []
+
         for _ in range(100):
             num_points = 1000
-            p = np.random.uniform(0,1)
+            p = np.random.uniform(-0.95,0.95)
+            v= 1
 
             mean = (0,0)
-            conv = [[1,p],
-                    [p,1]]
+            conv = [[v*v,p*v*v],
+                    [p*v*v,v*v]]
 
             points = np.random.multivariate_normal(mean,conv,size=num_points)
+            ts = tau_s(points,bounds_type="inf")
 
-            ts = tau_s(points)
-            tst = tau_s_t(points,lower_bounds=[-3,-3],upper_bounds=[3,3])
+            tst = tau_s_t(points)
 
             metric_renyi = (tst - ts)/tst
             ref_p = 1 - (1 - p**2)**0.5
 
+            tss.append(ts)
+            tsts.append(tst)
+
             dif.append(abs(metric_renyi - ref_p))
 
             ms.append(p)
-            rs.append(metric_renyi - ref_p)
+            rs.append(abs(metric_renyi - ref_p))
 
-        #plt.plot(ms,rs,"o")
-        #plt.show()
+        plt.plot(ms,rs,"o")
+        plt.show()
 
+        print()
         print(np.mean(dif))
+        print("Dif: {}".format(np.mean(dif)))
+        print("Ts: {}|{}".format(np.mean(tss),np.std(tss)))
+        print("Tst: {}|{}".format(np.mean(tsts),np.std(tsts)))
 
         self.assertLess(np.mean(dif),0.1)
 
@@ -54,12 +66,12 @@ class MyTestCase(unittest.TestCase):
 
         points = np.array(points)
 
-        lower_bounds = list(np.min(points,axis=0))
-        upper_bounds = list(np.max(points,axis=0))
+        #plt.plot(points[:,0],points[:,1],"o")
+        #plt.show()
 
         ts = tau_s(points)
 
-        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds, num_points_bins=50)
+        tst = tau_s_t(points)
 
         print(ts)
         print(tst)
@@ -74,20 +86,21 @@ class MyTestCase(unittest.TestCase):
     def test_circule(self):
         num_points = 1000
 
-        a = np.random.random(size=(num_points)) * 2*math.pi
-        r = np.random.random(size=(num_points))
+        points = []
+        while len(points) < num_points:
+            x,y = np.random.uniform(-1,1,2)
 
-        r = r/4 + 3/4
+            if x**2 + y**2 >= 3/4 and x**2 + y**2 <= 1:
+                points.append([x,y])
 
-        points = [[np.sin(a[i]) * r[i],np.cos(a[i]) * r[i]] for i in range(num_points)]
         points = np.array(points)
 
-        lower_bounds = list(np.min(points,axis=0))
-        upper_bounds = list(np.max(points,axis=0))
+        plt.plot(points[:,0],points[:,1],"o")
+        plt.show()
 
         ts = tau_s(points)
 
-        tst = tau_s_t(points, lower_bounds=lower_bounds, upper_bounds=upper_bounds)
+        tst = tau_s_t(points)
 
         print(ts)
         print(tst)
