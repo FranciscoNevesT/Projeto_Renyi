@@ -25,9 +25,9 @@ class MyTestCase(unittest.TestCase):
                     [p*v*v,v*v]]
 
             points = np.random.multivariate_normal(mean,conv,size=num_points)
-            ts = tau_s(points,bounds_type="inf")
+            ts = tau_s(points,bounds_type="inf",bandwidth="ISJ")
 
-            tst = tau_s_t(points)
+            tst = tau_s_t(points,bandwidth="ISJ")
 
             metric_renyi = (tst - ts)/tst
             ref_p = 1 - (1 - p**2)**0.5
@@ -69,9 +69,9 @@ class MyTestCase(unittest.TestCase):
         #plt.plot(points[:,0],points[:,1],"o")
         #plt.show()
 
-        ts = tau_s(points)
+        ts = tau_s(points,bandwidth="ISJ")
 
-        tst = tau_s_t(points)
+        tst = tau_s_t(points,bandwidth="ISJ")
 
         print(ts)
         print(tst)
