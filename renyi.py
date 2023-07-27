@@ -110,7 +110,10 @@ def fragment_space(points):
     return frag
 
 
-def tau_s_t(points,sample_points = 100, bandwidth = "silverman"):
+def tau_s_t(points,sample_points = None, bandwidth = "silverman"):
+
+    if sample_points is None:
+        sample_points = int(points.shape[0] ** 1.5)
 
     # Fit kernel density estimation for t dimension
     kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
