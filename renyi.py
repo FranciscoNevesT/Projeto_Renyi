@@ -1,9 +1,10 @@
 import numpy as np
 from sklearn.neighbors import KernelDensity
-import matplotlib.pyplot as plt
 from scipy import integrate
 
 from numpy import histogram_bin_edges
+from bandwidth_estimator import get_bandwidth
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
@@ -33,7 +34,7 @@ def integral_kde(kde,bounds, density_function=lambda x: x):
     integral_value = integrate.nquad(funct, bounds)[0]
     return integral_value
 
-def tau_s(points, bounds_type = "ref", bandwidth="silverman"):
+def tau_s(points, bounds_type = "ref", bandwidth="scott"):
     """
     Calculates tau_s using kernel density estimation.
 
@@ -49,7 +50,8 @@ def tau_s(points, bounds_type = "ref", bandwidth="silverman"):
 
     """
     # Fit kernel density estimation for s dimension
-    kde_s = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+    bandwidth_s = get_bandwidth(points[:, :-1].reshape(-1, points.shape[1] - 1),bandwidth_type=bandwidth)
+    kde_s = KernelDensity(kernel="gaussian", bandwidth=bandwidth_s)
     kde_s.fit(points[:, :-1].reshape(-1, points.shape[1] - 1))
 
     # Define density function for integration
@@ -85,7 +87,8 @@ def calc_tau_s_t(points_t,sample_points,bandwidth):
     w = x1 - x2
 
     # Fit kernel density estimation for s_t dimension
-    kde_s_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+    bandwidth_s_t = get_bandwidth(w, bandwidth_type=bandwidth)
+    kde_s_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth_s_t)
     kde_s_t.fit(w)
 
     # Calculate t_val by evaluating kernel density estimation for s-t dimension at 0 and multiplying by p
@@ -110,25 +113,45 @@ def fragment_space(points):
     return frag
 
 
-def tau_s_t(points,sample_points = None, bandwidth = "silverman"):
+def tau_s_t(points,sample_points = None, bandwidth = "scott", num_threads = -1):
 
     if sample_points is None:
         sample_points = int(points.shape[0] ** 1.5)
 
     # Fit kernel density estimation for t dimension
-    kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+    bandwidth_t = get_bandwidth(points[:, -1].reshape(-1, 1),bandwidth_type=bandwidth)
+    kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth_t)
     kde_t.fit(points[:, -1].reshape(-1, 1))
 
     points_frag = fragment_space(points)
 
     ts = []
 
-    for [points_t,bin_start,bin_end] in points_frag:
-        t_val = calc_tau_s_t(points_t,sample_points,bandwidth)
+    def calculate_tau_s_t(fragment):
+        points_t, bin_start, bin_end = fragment
+        t_val = calc_tau_s_t(points_t, sample_points, bandwidth)
+        ref = integral_kde(kde_t, [[bin_start, bin_end]], density_function=lambda x: x)
+        return t_val * ref
 
-        ref = integral_kde(kde_t, [[bin_start,bin_end]], density_function=lambda x: x)
+    if num_threads <= 0:
+        # Use all available CPU cores if num_threads is negative
+        num_threads = None
 
-        ts.append(t_val * ref)
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(calculate_tau_s_t, fragment) for fragment in points_frag]
+
+        for future in as_completed(futures):
+            ts.append(future.result())
 
     return np.sum(ts)
 
+
+def calc_renyi(points,bandwidth = "scott", num_threads = -1):
+
+    ts = tau_s(points, bandwidth = bandwidth)
+
+    tst = tau_s_t(points, bandwidth= bandwidth, num_threads = num_threads)
+
+    metric_renyi = (tst - ts) / tst
+
+    return metric_renyi
