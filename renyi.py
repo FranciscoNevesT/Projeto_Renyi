@@ -5,6 +5,7 @@ from scipy import integrate
 from numpy import histogram_bin_edges
 from bandwidth_estimator import get_bandwidth
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
@@ -63,19 +64,22 @@ def tau_s(points, bounds_type = "ref", bandwidth="ISJ"):
 
 def calc_tau_s_t(points_t, sample_points, bandwidth):
     """
-    Calculate the tau_s-t value for Kernel Density Estimation in s-t dimension.
+    Estimate the tau_s-t value for Kernel Density Estimation in s-t dimension.
 
     Parameters:
         points_t (array-like): Input data points in the t dimension.
-        sample_points (int): The number of sample points to use for the estimation.
+        sample_points (int): The number of sample points to use for the estimation. If  n   one, the sample points will be set to the number of points in the bin.
         bandwidth (str): The bandwidth type for KDE estimation.
 
     Returns:
-        float: The tau_s-t value.
+        float: The tau_s-t value, which is a measure of the density estimation in the s-t dimension.
     """
 
-    if len(points_t) == 0:
+    if len(points_t) <= points_t.shape[1]:
         return 0
+
+    if sample_points is None:
+        sample_points = int(len(points_t) * np.log(len(points_t)))
 
     points_t = points_t[:, :-1]
 
@@ -128,7 +132,7 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
 
     Parameters:
         points (array-like): Input data points.
-        sample_points (int, optional): The number of sample points to use for the estimation.
+        sample_points (int, optional): The number of sample points to use for the estimation. If  n   one, the sample points will be set to the number of points in the bin.
         bandwidth (str, optional): The bandwidth type for KDE estimation. Default is 'ISJ'.
         num_threads (int, optional): The number of threads for concurrent execution.
                                      If negative, it will use all available CPU cores.
@@ -136,8 +140,6 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
     Returns:
         float: The tau_s-t value.
     """
-    if sample_points is None:
-        sample_points = int(points.shape[0] ** 1.5)
 
     # Fit kernel density estimation for t dimension
     bandwidth_t = get_bandwidth(points[:, -1].reshape(-1, 1), bandwidth_type=bandwidth)
@@ -175,7 +177,17 @@ def calc_renyi(points, bandwidth="ISJ", num_threads=-1):
     Returns:
         float: The Renyi divergence metric.
     """
+    #t = time.time()
+
     ts = tau_s(points, bandwidth=bandwidth)
+
+    #s = time.time()
+
     tst = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads)
+
+    #st = time.time()
+
+    #print("ts: {} | st: {}".format(s -t,st - s))
+
     metric_renyi = (tst - ts) / tst
     return metric_renyi
