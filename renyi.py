@@ -6,6 +6,8 @@ from numpy import histogram_bin_edges
 from bandwidth_estimator import get_bandwidth
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+from scipy.stats import zscore
+import warnings
 
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
@@ -140,6 +142,7 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
     Returns:
         float: The tau_s-t value.
     """
+    sample_points = len(points)
 
     # Fit kernel density estimation for t dimension
     bandwidth_t = get_bandwidth(points[:, -1].reshape(-1, 1), bandwidth_type=bandwidth)
@@ -164,7 +167,7 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
     return np.sum(ts)
 
 
-def calc_renyi(points, bandwidth="ISJ", num_threads=-1):
+def calc_renyi(points, bandwidth="ISJ", num_threads=1):
     """
     Calculate the Renyi divergence metric for Kernel Density Estimation.
 
@@ -177,17 +180,19 @@ def calc_renyi(points, bandwidth="ISJ", num_threads=-1):
     Returns:
         float: The Renyi divergence metric.
     """
-    #t = time.time()
+
+
+    if points.shape[1] == 2:
+        points = zscore(points,axis=0)
 
     ts = tau_s(points, bandwidth=bandwidth)
 
-    #s = time.time()
-
     tst = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads)
 
-    #st = time.time()
-
-    #print("ts: {} | st: {}".format(s -t,st - s))
-
     metric_renyi = (tst - ts) / tst
+
+    if metric_renyi < 0:
+        #warnings.warn("Negative value for the metric. Orginal value: {}".format(metric_renyi))
+        metric_renyi = 0
+
     return metric_renyi
