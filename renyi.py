@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from scipy.stats import zscore
 import warnings
+from sklearn.cluster import AgglomerativeClustering
 
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
@@ -63,7 +64,6 @@ def tau_s(points, bounds_type = "ref", bandwidth="ISJ"):
     # Calculate tau_s using integral_kde function
     return integral_kde(kde_s, density_function=density_function, bounds = bounds)
 
-
 def calc_tau_s_t(points_t, sample_points, bandwidth):
     """
     Estimate the tau_s-t value for Kernel Density Estimation in s-t dimension.
@@ -103,18 +103,37 @@ def calc_tau_s_t(points_t, sample_points, bandwidth):
     return t_val
 
 
-def fragment_space(points):
-    """
-    Divide the data space into fragments based on the histogram bin edges.
+def fragment_space(points, max_size_frag = 1000, n_clusters = None):
+    p_1 = points[:,-1:]
 
-    Parameters:
-        points (array-like): Input data points.
+    if len(p_1) > max_size_frag:
+        sample = np.random.randint(0, len(p_1), max_size_frag)
+        p_1 = p_1[sample]
 
-    Returns:
-        list: A list of fragments, where each fragment contains data points and its corresponding bin start and end.
-    """
+    p_1 = np.sort(p_1,axis=0)
 
-    bounds = [-np.inf] +  list(histogram_bin_edges(points[:,-1])) + [np.inf]
+    if n_clusters is None:
+        n_clusters = int(np.sqrt(len(points)))
+
+    hierarchical_cluster = AgglomerativeClustering(n_clusters=n_clusters, metric='euclidean', linkage='ward')
+
+    labels = hierarchical_cluster.fit_predict(p_1)
+
+    bounds = [-np.inf]
+
+    p_last = None
+    l_last = labels[0]
+    for i in range(len(p_1)):
+        p = p_1[i]
+        l = labels[i]
+
+        if l != l_last:
+            bounds.append(((p+p_last)/2)[0])
+
+        p_last = p
+        l_last = l
+
+    bounds = bounds + [np.inf]
 
     frag = []
     for i in range(len(bounds) - 1):
@@ -128,28 +147,19 @@ def fragment_space(points):
     return frag
 
 
-def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
-    """
-    Calculate the tau_s-t value for Kernel Density Estimation in t dimension.
+def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1, max_size_frag = 1000, n_clusters = None):
 
-    Parameters:
-        points (array-like): Input data points.
-        sample_points (int, optional): The number of sample points to use for the estimation. If  n   one, the sample points will be set to the number of points in the bin.
-        bandwidth (str, optional): The bandwidth type for KDE estimation. Default is 'ISJ'.
-        num_threads (int, optional): The number of threads for concurrent execution.
-                                     If negative, it will use all available CPU cores.
-
-    Returns:
-        float: The tau_s-t value.
-    """
-    sample_points = len(points)
-
+    inicio = time.time()
     # Fit kernel density estimation for t dimension
     bandwidth_t = get_bandwidth(points[:, -1].reshape(-1, 1), bandwidth_type=bandwidth)
     kde_t = KernelDensity(kernel="gaussian", bandwidth=bandwidth_t)
     kde_t.fit(points[:, -1].reshape(-1, 1))
 
-    points_frag = fragment_space(points)
+    kde_time = time.time()
+
+    points_frag = fragment_space(points, max_size_frag = max_size_frag, n_clusters = n_clusters)
+
+    frag_time = time.time()
 
     def calculate_tau_s_t(fragment):
         points_t, bin_start, bin_end = fragment
@@ -164,35 +174,30 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1):
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         ts = list(executor.map(calculate_tau_s_t, points_frag))
 
+    end = time.time()
+
+    #print("kde: {} | frag: {} | rest: {}".format(kde_time - inicio, frag_time - kde_time, end - frag_time))
+
     return np.sum(ts)
 
 
-def calc_renyi(points, bandwidth="ISJ", num_threads=1):
-    """
-    Calculate the Renyi divergence metric for Kernel Density Estimation.
-
-    Parameters:
-        points (array-like): Input data points.
-        bandwidth (str, optional): The bandwidth type for KDE estimation. Default is 'ISJ'.
-        num_threads (int, optional): The number of threads for concurrent execution.
-                                     If negative, it will use all available CPU cores.
-
-    Returns:
-        float: The Renyi divergence metric.
-    """
-
+def calc_renyi(points, bandwidth="ISJ", num_threads=1, sample_points=None,
+               negative_margin = -0.1, view_warning = False, max_size_frag = 1000, n_clusters = None):
 
     if points.shape[1] == 2:
         points = zscore(points,axis=0)
 
     ts = tau_s(points, bandwidth=bandwidth)
 
-    tst = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads)
+    tst = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads, sample_points = sample_points,
+                  max_size_frag = max_size_frag, n_clusters = n_clusters)
 
     metric_renyi = (tst - ts) / tst
 
     if metric_renyi < 0:
-        #warnings.warn("Negative value for the metric. Orginal value: {}".format(metric_renyi))
+        if metric_renyi < negative_margin and view_warning:
+            warnings.warn("Negative value for the metric. Orginal value: {}. Size: {}".format(metric_renyi, len(points)))
+
         metric_renyi = 0
 
     return metric_renyi
