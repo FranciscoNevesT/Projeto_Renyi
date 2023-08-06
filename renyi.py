@@ -5,6 +5,7 @@ from scipy import integrate
 from numpy import histogram_bin_edges
 from bandwidth_estimator import get_bandwidth
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import Pool
 import time
 from scipy.stats import zscore
 import warnings
@@ -147,7 +148,40 @@ def fragment_space(points, max_size_frag = 1000, n_clusters = None):
     return frag
 
 
-def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1, max_size_frag = 1000, n_clusters = None):
+def tau_s_t_multi(args):
+    fragment,sample_points,bandwidth,kde_t,size,ref_estimator = args
+
+    points_t, bin_start, bin_end = fragment
+    t_val = calc_tau_s_t(points_t, sample_points, bandwidth)
+
+    if ref_estimator == "integral":
+        ref = integral_kde(kde_t, [[bin_start, bin_end]], density_function=lambda x: x)
+    elif ref_estimator == "proportion":
+        ref = len(points_t)/size
+    elif ref_estimator == "center":
+
+        if len(points_t) == 0:
+            ref = 0
+        else:
+            if bin_start == -np.inf:
+                bin_start = np.min(points_t)
+
+            if bin_end == np.inf:
+                bin_end = np.max(points_t)
+
+            center = (bin_start + bin_end) / 2
+
+            p = np.exp(kde_t.score_samples([[center]]))[0]
+            dist = (bin_end - bin_start)
+            ref = p * dist
+
+    else:
+        raise Exception("ref estiamtor not defined")
+
+    return t_val * ref
+
+def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=1,
+            max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion"):
 
     inicio = time.time()
     # Fit kernel density estimation for t dimension
@@ -159,20 +193,28 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1, max_siz
 
     points_frag = fragment_space(points, max_size_frag = max_size_frag, n_clusters = n_clusters)
 
-    frag_time = time.time()
+    args = [[i,sample_points,bandwidth,kde_t, len(points), ref_estimator] for i in points_frag]
 
-    def calculate_tau_s_t(fragment):
-        points_t, bin_start, bin_end = fragment
-        t_val = calc_tau_s_t(points_t, sample_points, bandwidth)
-        ref = integral_kde(kde_t, [[bin_start, bin_end]], density_function=lambda x: x)
-        return t_val * ref
+    frag_time = time.time()
 
     if num_threads <= 0:
         # Use all available CPU cores if num_threads is negative
         num_threads = None
 
+    if num_threads == 1:
+        ts = []
+
+        for arg in args:
+            ts.append(tau_s_t_multi(arg))
+
+    else:
+        with Pool(processes=num_threads) as pool:
+            ts = pool.map(tau_s_t_multi, args)
+
+    """
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         ts = list(executor.map(calculate_tau_s_t, points_frag))
+    """
 
     end = time.time()
 
@@ -182,7 +224,7 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=-1, max_siz
 
 
 def calc_renyi(points, bandwidth="ISJ", num_threads=1, sample_points=None,
-               negative_margin = -0.1, view_warning = False, max_size_frag = 1000, n_clusters = None):
+               negative_margin = -0.1, view_warning = False, max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion"):
 
     if points.shape[1] == 2:
         points = zscore(points,axis=0)
@@ -190,7 +232,7 @@ def calc_renyi(points, bandwidth="ISJ", num_threads=1, sample_points=None,
     ts = tau_s(points, bandwidth=bandwidth)
 
     tst = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads, sample_points = sample_points,
-                  max_size_frag = max_size_frag, n_clusters = n_clusters)
+                  max_size_frag = max_size_frag, n_clusters = n_clusters, ref_estimator = ref_estimator)
 
     metric_renyi = (tst - ts) / tst
 
