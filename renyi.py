@@ -10,6 +10,7 @@ import time
 from scipy.stats import zscore
 import warnings
 from sklearn.cluster import AgglomerativeClustering
+import pandas as pd
 
 def integral_kde(kde,bounds, density_function=lambda x: x):
     """
@@ -181,7 +182,7 @@ def tau_s_t_multi(args):
     return t_val * ref
 
 def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=1,
-            max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion"):
+            max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion", get_all_data = False):
 
     inicio = time.time()
     # Fit kernel density estimation for t dimension
@@ -220,7 +221,10 @@ def tau_s_t(points, sample_points=None, bandwidth="ISJ", num_threads=1,
 
     #print("kde: {} | frag: {} | rest: {}".format(kde_time - inicio, frag_time - kde_time, end - frag_time))
 
-    return np.sum(ts)
+    if get_all_data:
+        return ts,points_frag
+    else:
+        return np.sum(ts)
 
 
 def calc_renyi(points, bandwidth="ISJ", num_threads=1, sample_points=None,
@@ -243,3 +247,38 @@ def calc_renyi(points, bandwidth="ISJ", num_threads=1, sample_points=None,
         metric_renyi = 0
 
     return metric_renyi
+
+def get_data_result(points, bandwidth="ISJ", num_threads=1, sample_points=None,
+               negative_margin = -0.1, view_warning = False, max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion"):
+
+    if points.shape[1] == 2:
+        m1 = np.mean(points[:,0])
+        d1 = np.std(points[:,0])
+
+        m2 = np.mean(points[:,1])
+        d2 = np.std(points[:,1])
+
+        points = zscore(points,axis=0)
+
+    ts = tau_s(points, bandwidth=bandwidth)
+
+    tst,points_frag = tau_s_t(points, bandwidth=bandwidth, num_threads=num_threads, sample_points = sample_points,
+                  max_size_frag = max_size_frag, n_clusters = n_clusters, ref_estimator = ref_estimator,get_all_data=True)
+
+
+    cluster = []
+    points_data = []
+
+    for i in range(len(tst)):
+        cluster.append([points_frag[i][1] *d2 + m2,points_frag[i][2]*d2 + m2,tst[i]])
+
+        for p in points_frag[i][0]:
+            points_data.append([p[0]*d1 + m1,p[1]*d2 + m2,i])
+
+    cluster = pd.DataFrame(cluster, columns= "i_bound s_bound tst".split())
+    points_data = pd.DataFrame(points_data, columns= "s t cluster".split())
+
+    return cluster,points_data,ts
+
+
+
