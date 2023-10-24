@@ -229,9 +229,13 @@ def predep_s_t(s,t, sample_points=None, bandwidth="ISJ", num_threads=1,
         return np.sum(ts)
 
 def predep(s,t, sample_points=None, bandwidth="ISJ", num_threads=1,
-               max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion", get_all_data = False):
+               max_size_frag = 1000, n_clusters = None, ref_estimator = "proportion",
+           get_all_data = False, get_inter_values = False,space_cal = "bootstrap"):
 
-    p_s = predep_s(s)
+    if space_cal == "integral":
+        p_s = predep_s(s)
+    elif space_cal == "bootstrap":
+        p_s = calc_predep_s_t(s,None,bandwidth=bandwidth)
 
     p_s_t = predep_s_t(s,t, sample_points=sample_points, bandwidth=bandwidth, num_threads=num_threads,
                max_size_frag = max_size_frag, n_clusters = n_clusters, ref_estimator = ref_estimator,
@@ -239,4 +243,7 @@ def predep(s,t, sample_points=None, bandwidth="ISJ", num_threads=1,
 
     predep = (p_s_t - p_s)/p_s_t
 
-    return predep
+    if get_inter_values:
+        return predep,p_s,p_s_t
+    else:
+        return predep
